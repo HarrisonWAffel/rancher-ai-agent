@@ -281,8 +281,9 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     logging.info(tool)
     logging.info(tool.metadata)
 
-    if hasattr(tool, "metadata") and tool.metadata and "requiresConfirmation" in tool.metadata:
+    if hasattr(tool, "metadata") and tool.metadata.get("requiresConfirmation", "false") == "true":
         logging.info("using a tool that requires confirmation")
+        logging.info(tool.metadata.get("confirmationMessage", ""))
         rsp = _create_confirmation_response(
             "", "", "", "", "", "",
             tool.metadata.get("confirmationMessage", "")
@@ -294,6 +295,7 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
         return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
     if tool_call["name"] == "createKubernetesResource":
         return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
+    logging.info("using a tool that does not require confirmation")
     return ""
 
 def _extract_interrupt_message(interrupt_message:any) -> str:
