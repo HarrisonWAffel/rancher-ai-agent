@@ -281,11 +281,11 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     if tool.metadata and "requiresConfirmation" in tool["metadata"]:
         return _create_confirmation_response("", "", "",
                                              "", "",
-                                             "", tool_call["metadata"]["confirmationMessage"])
+                                             "", tool["metadata"]["confirmationMessage"])
     if tool_call["name"] == "patchKubernetesResource":
-        return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "DO YOU REALLY WANT TO PROCEED WITH THIS ACTION?")
+        return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
     if tool_call["name"] == "createKubernetesResource":
-        return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "DO YOU REALLY WANT TO PROCEED WITH THIS ACTION?")
+        return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
     return ""
 
 def _extract_interrupt_message(interrupt_message:any) -> str:
