@@ -4,6 +4,7 @@ import langgraph.types
 
 from typing import Annotated, Sequence, TypedDict
 from langchain_core.messages import BaseMessage
+from langchain_core.messages.content import ToolCall
 from langgraph.graph.message import add_messages
 from langchain_core.messages import ToolMessage, HumanMessage, RemoveMessage
 from langchain_core.runnables import RunnableConfig
@@ -38,7 +39,7 @@ class K8sAgentBuilder:
         self.checkpointer = checkpointer
         self.llm_with_tools = self.llm.bind_tools(self.tools)
         self.tools_by_name = {tool.name: tool for tool in self.tools}
-    
+
     def summarize_conversation_node(self, state: AgentState):
         """
         Summarizes the conversation history.
@@ -66,7 +67,7 @@ class K8sAgentBuilder:
         new_messages = new_messages + [response]
 
         logging.debug("summarizing conversation")
-        
+
         return {"summary": response.content, "messages": new_messages}
 
     def _invoke_llm_with_retry(self, messages: list, config: RunnableConfig):
@@ -100,7 +101,7 @@ class K8sAgentBuilder:
 
         Returns:
             A dictionary containing the LLM's response message."""
-        
+
         logging.debug("calling model")
 
         messages = [self.system_prompt] + state["messages"]
@@ -126,13 +127,13 @@ class K8sAgentBuilder:
             or an error message if a tool fails or is cancelled."""
         outputs = []
         for tool_call in state["messages"][-1].tool_calls:
-            if not _handle_interrupt(tool_call):
+            if not _handle_interrupt(tool_call, self.tools_by_name[tool_call["name"]]):
                 return {"messages": ToolMessage(
                         content=INTERRUPT_CANCEL_MESSAGE,
                         name=tool_call["name"],
                         tool_call_id=tool_call["id"]
                         )}
-            
+
             try:
                 logging.debug("calling tool")
                 tool_result = await self.tools_by_name[tool_call["name"]].ainvoke(tool_call["args"])
@@ -149,7 +150,7 @@ class K8sAgentBuilder:
                 return {"messages": str(e)}
 
         return {"messages": outputs}
-    
+
     def should_summarize_conversation(self, state: AgentState):
         """
         Determines the next step in the agent's workflow.
@@ -171,13 +172,13 @@ class K8sAgentBuilder:
             return "end"
         else:
             return "continue"
-        
+
     def should_continue_after_interrupt(self, state: AgentState):
         messages = state["messages"]
         last_message = messages[-1]
         if isinstance(last_message, ToolMessage) and last_message.content == INTERRUPT_CANCEL_MESSAGE:
             return "end"
-        
+
         return "continue"
 
 
@@ -217,15 +218,15 @@ class K8sAgentBuilder:
 def create_k8s_agent(llm: BaseChatModel, tools: list[BaseTool], system_prompt: str, checkpointer: Checkpointer) -> CompiledStateGraph:
     """
     Creates a LangGraph agent capable of interacting with Rancher and Kubernetes resources.
-    
+
     This factory function instantiates the K8sAgentBuilder, builds the agent graph,
     and returns the compiled agent.
-    
+
     Args:
         llm: The language model to use for the agent's decisions.
         tools: A list of tools the agent can use (e.g., to interact with K8s).
         system_prompt: The initial system-level instructions for the agent.
-    
+
     Returns:
         A compiled LangGraph StateGraph ready to be invoked.
     """
@@ -233,7 +234,7 @@ def create_k8s_agent(llm: BaseChatModel, tools: list[BaseTool], system_prompt: s
 
     return builder.build()
 
-def _create_confirmation_response(payload: str, type: str, name: str, kind: str, cluster: str, namespace: str):
+def _create_confirmation_response(payload: str, type: str, name: str, kind: str, cluster: str, namespace: str, customMessage: str):
     """
     Creates a structured confirmation response for the UI.
 
@@ -242,6 +243,7 @@ def _create_confirmation_response(payload: str, type: str, name: str, kind: str,
 
     Args:
         payload: The data for the operation (e.g., a patch or a resource definition).
+            e.g., for a Patch operation: [{"op": "replace", "path": "/spec/replicas", "value": 3}]
         type: The type of operation (e.g., "patch").
         name: The name of the resource.
         kind: The kind of the resource (e.g., "Deployment").
@@ -251,6 +253,7 @@ def _create_confirmation_response(payload: str, type: str, name: str, kind: str,
     payload_data = {
         "payload": payload,
         "type": type,
+        "messageContent": customMessage,
         "resource": {
             "name": name,
             "kind": kind,
@@ -263,7 +266,7 @@ def _create_confirmation_response(payload: str, type: str, name: str, kind: str,
 
     return f'<confirmation-response>{json_payload}</confirmation-response>'
 
-def _should_interrupt(tool_call: any) -> str:
+def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     """
     Checks if a tool call requires user confirmation and generates an interrupt message.
 
@@ -274,13 +277,18 @@ def _should_interrupt(tool_call: any) -> str:
         A formatted string to trigger a langgraph.types.interrupt, or an empty string
         if no interruption is needed.
     """
+    logging.info(tool_call)
+    if tool.metadata and "requiresConfirmation" in tool["metadata"]:
+        return _create_confirmation_response("", "", "",
+                                             "", "",
+                                             "", "DO YOU REALLY WANT TO PROCEED WITH THIS ACTION?")
     if tool_call["name"] == "patchKubernetesResource":
-        return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'])
+        return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "DO YOU REALLY WANT TO PROCEED WITH THIS ACTION?")
     if tool_call["name"] == "createKubernetesResource":
-        return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'])
+        return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "DO YOU REALLY WANT TO PROCEED WITH THIS ACTION?")
     return ""
 
-def _extract_interrupt_message(interrupt_message:any) -> str: 
+def _extract_interrupt_message(interrupt_message:any) -> str:
     """
     Extracts the user's response from an interrupt.
 
@@ -292,10 +300,10 @@ def _extract_interrupt_message(interrupt_message:any) -> str:
         return json_response["prompt"]
     except Exception:
         return interrupt_message["response"]
-    
-def _handle_interrupt(tool_call: dict) -> bool:
+
+def _handle_interrupt(tool_call: dict, tool: BaseTool) -> bool:
     """Handles the user confirmation interrupt for a tool call."""
-    if interrupt_message := _should_interrupt(tool_call):
+    if interrupt_message := _should_interrupt(tool_call, tool):
         response = _extract_interrupt_message(langgraph.types.interrupt(interrupt_message))
         if response != "yes":
             return False
