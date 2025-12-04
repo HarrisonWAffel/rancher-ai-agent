@@ -294,7 +294,7 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
         for arg_key, arg_value in tool_call['args'].items():
             placeholder = "{" + arg_key + "}"
             if isinstance(arg_value, (dict, list)):
-                arg_value = json.dumps(arg_value)
+                arg_value = json.dumps(arg_value, indent=2)
             confirmation_message = confirmation_message.replace(placeholder, str(arg_value))
 
     if requires_confirmation == "true":
