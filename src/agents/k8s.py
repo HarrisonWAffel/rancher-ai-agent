@@ -281,11 +281,19 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     logging.info(tool)
     logging.info(tool.metadata)
 
+    # we should try and do some templating where we extract argument values and insert them into the confirmation message
+
     confirmation_message = ""
     requires_confirmation = 'false'
     if isinstance(tool.metadata, dict) and '_meta' in tool.metadata and isinstance(tool.metadata['_meta'], dict):
         confirmation_message = tool.metadata['_meta'].get('confirmationMessage', 'empty')
         requires_confirmation = tool.metadata['_meta'].get('requiresConfirmation', 'false')
+
+    # build the confirmation message if needed
+    if confirmation_message != "empty":
+        for arg_key, arg_value in tool_call['args'].items():
+            placeholder = "{" + arg_key + "}"
+            confirmation_message = confirmation_message.replace(placeholder, str(arg_value))
 
     if requires_confirmation == "true":
         rsp = _create_confirmation_response(
@@ -297,8 +305,8 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
 
     if tool_call["name"] == "patchKubernetesResource":
         return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
-    if tool_call["name"] == "createKubernetesResource":
-        return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
+    # if tool_call["name"] == "createKubernetesResource":
+    #     return _create_confirmation_response(tool_call['args']['resource'], "create", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
     logging.info("using a tool that does not require confirmation")
     return ""
 
