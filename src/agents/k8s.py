@@ -278,6 +278,9 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
         if no interruption is needed.
     """
     logging.info(tool_call)
+    logging.info(tool)
+    logging.info(tool.metadata)
+
     if tool.metadata and "requiresConfirmation" in tool.metadata:
         return _create_confirmation_response("", "", "",
                                              "", "",
