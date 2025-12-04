@@ -280,10 +280,12 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     logging.info(tool_call)
     logging.info(tool)
     logging.info(tool.metadata)
+    if hasattr(tool, "metadata"):
+        logging.info("using a tool that requires confirmation")
+        logging.info(tool.metadata.get("confirmationMessage", "empty"))
+        logging.info(tool.metadata.get("requiresConfirmation", "empty"))
 
     if hasattr(tool, "metadata") and tool.metadata.get("requiresConfirmation", "false") == "true":
-        logging.info("using a tool that requires confirmation")
-        logging.info(tool.metadata.get("confirmationMessage", ""))
         rsp = _create_confirmation_response(
             "", "", "", "", "", "",
             tool.metadata.get("confirmationMessage", "")
