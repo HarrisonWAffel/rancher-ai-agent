@@ -281,7 +281,7 @@ def _should_interrupt(tool_call: any, tool: BaseTool) -> str:
     if tool.metadata and "requiresConfirmation" in tool["metadata"]:
         return _create_confirmation_response("", "", "",
                                              "", "",
-                                             "", tool.metadata["confirmationMessage"])
+                                             "", tool.metadata.get("confirmationMessage", ""))
     if tool_call["name"] == "patchKubernetesResource":
         return _create_confirmation_response(tool_call['args']['patch'], "patch", tool_call['args']['name'], tool_call['args']['kind'], tool_call['args']['cluster'], tool_call['args']['namespace'], "")
     if tool_call["name"] == "createKubernetesResource":
